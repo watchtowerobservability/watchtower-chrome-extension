@@ -1,0 +1,30 @@
+{
+  "name": "@watchtowerobservability/chrome-extension",
+  "version": "0.1.0",
+  "repository": { "type": "git", "url": "git+https://github.com/watchtowerobservability/watchtower-chrome-extension.git" },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "description": "Watchtower SDK for Chrome (MV3) extensions: service worker, pages and content scripts, durable queue, shared session",
+  "type": "module",
+  "packageManager": "pnpm@11.2.2",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "esbuild": "0.25.10",
+    "vitest": "5.0.5"
+  }
+}
