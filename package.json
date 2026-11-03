@@ -17,6 +17,7 @@
   },
   "files": ["dist"],
   "scripts": {
+    "prebuild": "node scripts/browser-src.mjs",
     "build": "node esbuild.config.mjs",
     "typecheck": "tsgo --noEmit",
     "test": "vitest run"
