@@ -15,7 +15,7 @@ export type { ExtContext } from "./context";
 export { normalizeFrameUrl } from "./context";
 export type { Crumb, ExtCtx, Integration, Trace } from "./ext_ctx";
 
-export const SDK = { name: "@watchtower/chrome-extension", version: "0.2.0" } as const;
+export const SDK = { name: "@watchtower/chrome-extension", version: "0.2.1" } as const;
 const ALARM = "wt-flush";
 /** Chrome 120+ allows 30 s; older versions round up to 1 min on their own. */
 const ALARM_MINUTES = 0.5;

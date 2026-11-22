@@ -1,6 +1,6 @@
 {
   "name": "@watchtowerobservability/chrome-extension",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/watchtowerobservability/watchtower-chrome-extension.git"
@@ -16,19 +16,30 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./integrations": "./dist/integrations.js",
-    "./pages": "./dist/pages.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./integrations": {
+      "types": "./dist/integrations.d.ts",
+      "default": "./dist/integrations.js"
+    },
+    "./pages": {
+      "types": "./dist/pages.d.ts",
+      "default": "./dist/pages.js"
+    }
   },
   "files": [
-    "dist",
+    "dist/*.js",
+    "dist/*.d.ts",
+    "dist/types",
     "bin"
   ],
   "scripts": {
     "prebuild": "node scripts/browser-src.mjs",
-    "build": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs && node scripts/dts.mjs",
     "typecheck": "tsgo --noEmit",
-    "test": "vitest run && node --test test/*.test.mjs"
+    "test": "vitest run && node --test test/*.test.mjs && node scripts/check-pack.mjs"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

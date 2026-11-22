@@ -107,7 +107,7 @@ import { watchtower } from "@watchtowerobservability/browser/vite-plugin";
 export default { build: { sourcemap: true }, plugins: [watchtower({ api: "https://api.example.com", project: "my-project", release: "1.4.0" })] };
 ```
 
-Do not ship the `.map` files in the extension package (the plugin deletes them after upload by default).
+Do not ship the `.map` files in the extension package (the plugin deletes them after upload by default). The SDK's own maps are not in its npm package, so a bundler cannot copy them in.
 Webpack and Rollup plugins are exported the same way (`/webpack-plugin`, `/rollup-plugin`).
 
 ## Limits
