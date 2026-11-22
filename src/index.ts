@@ -13,7 +13,7 @@ export type { RumEventV1 } from "@watchtowerobservability/browser/src/config";
 export type { ExtContext } from "./context";
 export { normalizeFrameUrl } from "./context";
 
-export const SDK = { name: "@watchtower/chrome-extension", version: "0.1.0" } as const;
+export const SDK = { name: "@watchtower/chrome-extension", version: "0.1.1" } as const;
 const ALARM = "wt-flush";
 /** Chrome 120+ allows 30 s; older versions round up to 1 min on their own. */
 const ALARM_MINUTES = 0.5;
