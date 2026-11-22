@@ -20,6 +20,9 @@ importers:
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@22.10.2)(vite@8.3.5(@types/node@22.10.2)(esbuild@0.25.10))
+      web-vitals:
+        specifier: 5.1.0
+        version: 5.1.0
 
 packages:
 
@@ -613,6 +616,9 @@ packages:
       jsdom:
         optional: true
 
+  web-vitals@5.1.0:
+    resolution: {integrity: sha512-ArI3kx5jI0atlTtmV0fWU3fjpLmq/nD3Zr1iFFlJLaqa5wLBkUSzINwBPySCX/8jRyjlmy1Volw1kz1g9XE4Jg==}
+
   why-is-node-running@3.2.1:
     resolution: {integrity: sha512-Tb2FUhB4vUsGQlfSquQLYkApkuPAFQXGFzxWKHHumVz2dK+X1RUm/HnID4+TfIGYJ1kTcwOaCk/buYCEJr6YjQ==}
     engines: {node: '>=20.11'}
@@ -996,5 +1002,7 @@ snapshots:
       '@types/node': 22.10.2
     transitivePeerDependencies:
       - msw
+
+  web-vitals@5.1.0: {}
 
   why-is-node-running@3.2.1: {}

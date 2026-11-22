@@ -3,17 +3,19 @@ import { hashUserId, rand, uuid } from "@watchtowerobservability/browser/src/ids
 import { fetchRemoteConfig } from "@watchtowerobservability/browser/src/remote_config";
 import type { Envelope } from "@watchtowerobservability/browser/src/transport";
 import { realEnv, type Env } from "./chrome_api";
-import { detectContext, type ExtContext } from "./context";
+import { detectContext, isBackground, type ExtContext } from "./context";
 import { checkLastError, installErrors } from "./errors";
 import { makeFlusher } from "./flush";
 import { SharedSession } from "./session";
+import type { ExtCtx, Integration, Trace } from "./ext_ctx";
 import { DurableQueue, STORE_DEFAULTS, memoryArea, type StoreLimits } from "./store";
 
 export type { RumEventV1 } from "@watchtowerobservability/browser/src/config";
 export type { ExtContext } from "./context";
 export { normalizeFrameUrl } from "./context";
+export type { Crumb, ExtCtx, Integration, Trace } from "./ext_ctx";
 
-export const SDK = { name: "@watchtower/chrome-extension", version: "0.1.1" } as const;
+export const SDK = { name: "@watchtower/chrome-extension", version: "0.2.0" } as const;
 const ALARM = "wt-flush";
 /** Chrome 120+ allows 30 s; older versions round up to 1 min on their own. */
 const ALARM_MINUTES = 0.5;
@@ -34,6 +36,8 @@ export interface ChromeExtensionConfig
   hostOrigin?: boolean;
   /** durable queue bounds: defaults 1000 events and 1 MiB in chrome.storage.local */
   queue?: Partial<StoreLimits>;
+  /** opt-in features, e.g. `[breadcrumbs(), lifecycle(), messaging(), chromeApis(), pages()]` from their subpath imports */
+  integrations?: Integration[];
   /** test hooks */
   env?: Env;
   fetch?: typeof fetch;
@@ -48,6 +52,8 @@ export interface ChromeExtensionClient {
   /** Send everything stored now (no-op in content scripts, which forward to the service worker). */
   flush(): Promise<void>;
   sessionId(): Promise<string>;
+  /** The `api` of an installed integration, e.g. `integration<BreadcrumbApi>("breadcrumbs")?.add(...)`. */
+  integration<T = unknown>(name: string): T | undefined;
   stop(): void;
   shutdown(): Promise<void>;
 }
@@ -60,6 +66,7 @@ const NOOP: ChromeExtensionClient = {
   setAttribute: noop,
   flush: () => Promise.resolve(),
   sessionId: () => Promise.resolve(""),
+  integration: () => undefined,
   stop: noop,
   shutdown: () => Promise.resolve(),
 };
@@ -83,7 +90,7 @@ function build(cfg: ChromeExtensionConfig): ChromeExtensionClient {
   const extId = chrome?.runtime?.id;
   const context = cfg.context ?? detectContext(env, manifest);
   const release = cfg.release ?? manifest.version;
-  const sw = context === "service_worker";
+  const sw = isBackground(context);
   const content = context === "content_script";
   const path = (env.location?.pathname ?? "").replace(/^\/+/, "");
   const realFetch = cfg.fetch ?? globalThis.fetch?.bind(globalThis);
@@ -91,6 +98,7 @@ function build(cfg: ChromeExtensionConfig): ChromeExtensionClient {
   const base: Attrs = { "extension.context": context };
   if (extId) base["extension.id"] = extId;
   if (manifest.manifest_version) base["extension.manifest_version"] = manifest.manifest_version;
+  if (env.browser) base["extension.browser"] = env.browser;
   if (!content) base["extension.page"] = path;
   else if (cfg.hostOrigin && env.location?.origin) base["extension.host_origin"] = env.location.origin;
 
@@ -161,10 +169,19 @@ function build(cfg: ChromeExtensionConfig): ChromeExtensionClient {
     await queue.add(e).catch(noop); // buffered; the service worker flushes it
   };
 
-  const emit = (type: RumEventV1["type"], name: string, extra: Attrs = {}, value?: number): void => {
+  const onErrorFns: Array<(a: Attrs) => void> = [];
+  const emit = (type: RumEventV1["type"], name: string, extra: Attrs = {}, value?: number, trace?: Trace): void => {
     if (stopped) return;
     let e: RumEventV1 | null = { id: uuid(), ts_ns: Date.now() * 1e6, type, name, attrs: { ...attrs, ...base, ...extra } };
     if (value !== undefined) e.value = value;
+    if (trace) Object.assign(e, trace);
+    if (type === "error")
+      for (const f of onErrorFns)
+        try {
+          f(e.attrs);
+        } catch {
+          /* an integration never breaks error capture */
+        }
     if (cfg.beforeSend) e = cfg.beforeSend(e);
     if (e) void (content ? forward(e) : accept(e)).catch(noop);
   };
@@ -193,8 +210,32 @@ function build(cfg: ChromeExtensionConfig): ChromeExtensionClient {
       chrome.alarms?.onAlarm?.removeListener?.(onAlarm);
     });
   }
-  // After the SDK's own listeners, so wrapListeners does not wrap them.
+  // Integrations register before installErrors, so wrapListeners does not wrap their listeners.
+  let report: ReturnType<typeof installErrors>["report"] = noop;
+  const ctx: ExtCtx = {
+    env,
+    context,
+    extId,
+    release,
+    debug: cfg.debug,
+    emit,
+    report: (...a) => report(...a),
+    crumb: noop,
+    onError: (f) => void onErrorFns.push(f),
+    isOwn: (u) => u.startsWith(cfg.endpoint),
+  };
+  const apis = new Map<string, unknown>();
+  for (const i of cfg.integrations ?? []) {
+    try {
+      const u = i.setup(ctx);
+      if (u) cleanup.push(u);
+      apis.set(i.name, i.api);
+    } catch (e) {
+      if (cfg.debug) console.warn(`[watchtower] integration ${i?.name} failed`, e);
+    }
+  }
   const errors = installErrors({ env, extId, release, emit: (t, n, a) => emit(t, n, a), ownOnly: content, wrapListeners: cfg.wrapListeners === true });
+  report = errors.report;
   cleanup.push(errors.uninstall);
 
   // The worker may have been killed with events stored: send them as soon as it is back.
@@ -208,7 +249,10 @@ function build(cfg: ChromeExtensionConfig): ChromeExtensionClient {
       const t0 = Date.now();
       try {
         const r = await orig(input, init);
-        if (!skip) emit("resource", url.split(/[?#]/)[0]!, { method: init?.method ?? "GET", status: r.status }, Date.now() - t0);
+        if (!skip) {
+          emit("resource", url.split(/[?#]/)[0]!, { method: init?.method ?? "GET", status: r.status }, Date.now() - t0);
+          ctx.crumb({ category: "fetch", message: `${init?.method ?? "GET"} ${url.split(/[?#]/)[0]} ${r.status}`, level: r.ok ? "info" : "warning" });
+        }
         return r;
       } catch (e) {
         if (!skip) emit("resource", url.split(/[?#]/)[0]!, { method: init?.method ?? "GET", status: 0 }, Date.now() - t0);
@@ -249,6 +293,7 @@ function build(cfg: ChromeExtensionConfig): ChromeExtensionClient {
     setAttribute: safe((k: string, v: string | number | boolean) => void (attrs[k] = v), undefined),
     flush: () => flush().then(noop, noop),
     sessionId: () => session.touch().then((s) => s.id, () => ""),
+    integration: <T,>(name: string) => apis.get(name) as T | undefined,
     stop,
     shutdown: async () => {
       stop();

@@ -1,6 +1,6 @@
 import type { Attrs, RumEventV1 } from "@watchtowerobservability/browser/src/config";
 import { parseStack } from "@watchtowerobservability/browser/src/instrument/errors";
-import type { ChromeApi, Env } from "./chrome_api";
+import { ownBase, type ChromeApi, type Env } from "./chrome_api";
 import { isOwnUrl, normalizeFrameUrl } from "./context";
 
 type Emit = (type: RumEventV1["type"], name: string, attrs: Attrs) => void;
@@ -50,10 +50,11 @@ export function installErrors(o: ErrorOpts): ErrorHandle {
   };
 
   /** Host pages share the content script's `window` events: never report what the extension did not throw. */
+  const base = ownBase(o.env);
   const mine = (stack: string | undefined, filename?: string): boolean => {
     if (!o.ownOnly) return true;
     const top = stack ? parseStack(stack).pop() : undefined;
-    return isOwnUrl(top?.filename ?? filename, o.extId);
+    return isOwnUrl(top?.filename ?? filename, o.extId, base);
   };
 
   const onError = (ev: Event): void => {

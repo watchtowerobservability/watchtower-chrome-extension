@@ -10,7 +10,7 @@
     "allowJs": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "paths": { "@watchtowerobservability/browser/src/*": ["./../browser/src/*"] }
+    "paths": { "@watchtowerobservability/browser/src/*": ["./../browser/src/*"], "web-vitals/*": ["./node_modules/web-vitals/dist/modules/*"] }
   },
   "include": ["src", "*.ts"]
 }

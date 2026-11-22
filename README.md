@@ -1,6 +1,6 @@
 # @watchtowerobservability/chrome-extension
 
-Errors, a shared session and a durable queue for Manifest V3 extensions on Chrome, Edge and other Chromium browsers.
+Errors, breadcrumbs, lifecycle events, cross-context tracing, page vitals, a shared session and a durable queue for Manifest V3 extensions on Chrome, Edge, Opera, Brave, Firefox and Safari.
 It works in the background service worker, popup, options, side panel, offscreen and devtools pages, and content scripts.
 It reuses the [browser SDK](../browser) (transport, ids, stack parser) and has no runtime dependencies of its own.
 
@@ -40,7 +40,7 @@ Full example: [examples/basic](examples/basic).
 
 | Topic | Behaviour |
 |---|---|
-| Event tags | `extension.context` (`service_worker`, `popup`, `options`, `side_panel`, `offscreen`, `content_script`, `devtools`), `extension.id`, `extension.manifest_version`; `release` defaults to the manifest `version` |
+| Event tags | `extension.context` (`service_worker`, `background`, `popup`, `options`, `side_panel`, `offscreen`, `content_script`, `devtools`), `extension.browser`, `extension.id`, `extension.manifest_version`; `release` defaults to the manifest `version` |
 | Session | One id in `chrome.storage.session` shared by every context (memory fallback). 30 min idle and 4 h max rollover, same as the browser SDK |
 | Queue | Every event is written to `chrome.storage.local` first (default 1000 events / 1 MiB; oldest dropped, counted in `wt.sdk.dropped`). Flushed on init, `onStartup`, `onInstalled`, a 30 s alarm, and 5 s after an event |
 | Delivery | At-least-once. Events are deleted only after the server accepted them, so a killed worker re-sends; every event has a stable `id` for server-side dedupe |
@@ -58,7 +58,42 @@ Options beyond the browser SDK's `publishableKey`, `endpoint`, `service`, `envir
 | `hostOrigin` | `false` | Content scripts: add the host page origin as `extension.host_origin` |
 | `queue` | `{ maxEvents: 1000, maxBytes: 1048576 }` | Durable queue bounds |
 
-Client: `captureError(err, ctx?)`, `checkLastError(where?)` (reports `chrome.runtime.lastError` when set; call it at the top of a callback), `setUser`, `setAttribute`, `flush()`, `sessionId()`, `stop()`, `shutdown()`.
+Client: `captureError(err, ctx?)`, `checkLastError(where?)` (reports `chrome.runtime.lastError` when set; call it at the top of a callback), `setUser`, `setAttribute`, `flush()`, `sessionId()`, `integration(name)`, `stop()`, `shutdown()`.
+
+## Integrations
+
+Opt-in, so the service worker only carries what you turn on. Pass them to `init` in every context where you want them.
+
+```ts
+import { init } from "@watchtowerobservability/chrome-extension";
+import { breadcrumbs, chromeApis, lifecycle, messaging } from "@watchtowerobservability/chrome-extension/integrations";
+// extension pages only (bundles web-vitals): import { pages } from "@watchtowerobservability/chrome-extension/pages";
+
+export const wt = init({ publishableKey: "wtp_...", endpoint: "https://ingest.example.com", service: "my-extension",
+  integrations: [breadcrumbs(), lifecycle({ uninstallUrl: "https://example.com/bye" }), messaging(), chromeApis()] });
+```
+
+| Integration | What you get |
+|---|---|
+| `breadcrumbs()` | The last 50 steps before every error (`breadcrumbs` attr): `console.warn/error`, runtime messages (their `type`/`action` only), tab activate/complete/close (ids only), alarms, `storage.onChanged` key names (never values), fetches, lifecycle and failed `chrome.*` calls. Add your own with `wt.integration<BreadcrumbApi>("breadcrumbs").add({ category, message })` |
+| `lifecycle()` | `extension.installed` / `updated` (with `extension.previous_version`) / `browser_updated`; `extension.worker_start` with `extension.cold` and how long the worker was dead (`extension.worker_gap_ms`); optional-permission grants and removals (origins counted, never listed); `chrome.storage.local` usage against its quota every 6 h; an uninstall survey URL tagged with version and a random install id |
+| `messaging()` | Distributed tracing across contexts: a content script's `sendMessage`, the worker handling it and the worker's `fetch` share one trace (`traceparent` is sent to `tracePropagationTargets`). Every message is a `resource` event with its latency and outcome. Call `init` before adding `onMessage` listeners in every context; messages to other extensions and native hosts are never wrapped |
+| `chromeApis()` | Every failed `chrome.*` call (promise rejection or `runtime.lastError`) is reported as `ChromeApiError` with `extension.api` (`tabs.query`, `scripting.executeScript`, ...). Reading `lastError` also silences Chrome's "Unchecked runtime.lastError" console noise. Known noise (closed tabs, `chrome://` pages) is ignored; `slowMs` reports slow calls |
+| `pages()` | Popup, options, side panel and devtools pages: Web Vitals, long tasks, rage and dead clicks, `extension.page` views, how long the page stayed open (`extension.page_open_ms`) and popup render time (`extension.popup_render_ms`) |
+
+## Firefox, Safari, Edge
+
+The SDK uses `browser.*` when present (Firefox, Safari) and `chrome.*` otherwise, tags events with the browser, and treats Firefox/Safari background pages (`background.scripts` or `background.page`) like the Chrome service worker.
+`moz-extension://` and `safari-web-extension://` frames are rewritten to `app:///` like Chrome's, so one source map upload serves every browser.
+
+## CLI
+
+```sh
+npx wt-ext check dist --endpoint https://ingest.example.com   # manifest, permissions, CSP, shipped .map files; exit 1 on errors
+WT_TOKEN=... npx wt-ext sourcemaps dist --api https://api.example.com --project my-project --delete-after
+```
+
+`check` is cheap enough for CI before every Web Store upload. `sourcemaps` injects debug ids, uploads every map under `app:///<path>` for the manifest version (or `--release`) and deletes the maps so they never ship. The token is read only from the environment.
 
 ## Source maps
 
