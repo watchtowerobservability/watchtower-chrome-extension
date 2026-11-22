@@ -28,7 +28,7 @@
     "prebuild": "node scripts/browser-src.mjs",
     "build": "node esbuild.config.mjs",
     "typecheck": "tsgo --noEmit",
-    "test": "vitest run && node --test test/"
+    "test": "vitest run && node --test test/*.test.mjs"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
