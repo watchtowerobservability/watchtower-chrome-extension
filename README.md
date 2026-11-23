@@ -31,6 +31,7 @@ Pages report themselves; content scripts forward to the service worker.
 
 - `storage`: the durable queue (`chrome.storage.local`) and shared session (`chrome.storage.session`).
 - `alarms`: the periodic flush (every 30 s, the minimum Chrome allows).
+- Publishable key: add your extension's origin to the key's allowed origins. Chrome, Edge, Opera and Brave: the exact `chrome-extension://<your id>` (the id is the same on every install from the store). Firefox and Safari give each install a random id, so add `moz-extension://*` / `safari-web-extension://*`, which accepts any install of that browser; `chrome-extension://*` is refused.
 - Host permission for the ingest origin, so extension pages and the worker can POST without CORS. Content scripts never POST.
 - CSP: the default extension CSP (`script-src 'self'`) is fine; add the ingest origin to `connect-src` only if you override `content_security_policy`.
 

@@ -32,7 +32,7 @@ const visit = (file) => {
       bad.push(`${relative(tmp, file)}: imports "${spec}"`);
       return m;
     }
-    const d = [`${target}.d.ts`, join(target, "index.d.ts")].find(existsSync);
+    const d = [target.replace(/\.js$/, ".d.ts"), `${target}.d.ts`, join(target, "index.d.ts")].find(existsSync);
     if (!d) {
       bad.push(`${relative(tmp, file)}: cannot resolve "${spec}"`);
       return m;
